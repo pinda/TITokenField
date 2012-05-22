@@ -44,6 +44,7 @@
 - (NSString *)tokenField:(TITokenField *)tokenField displayStringForRepresentedObject:(id)object;
 - (NSString *)tokenField:(TITokenField *)tokenField searchResultStringForRepresentedObject:(id)object;
 - (UITableViewCell *)tokenField:(TITokenField *)tokenField resultsTableView:(UITableView *)tableView cellForRepresentedObject:(id)object;
+- (void)tokenField:(TITokenField *)tokenField resultsTableView:(UITableView *)tableView didSelectRowForObject:(id)object;
 - (CGFloat)tokenField:(TITokenField *)tokenField resultsTableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath;
 @end
 
@@ -66,6 +67,7 @@
 	UITableView * resultsTable;
 	UIView * contentView;
 	
+  NSString* currentTerm;
 	NSArray * sourceArray;
 	NSMutableArray * resultsArray;
 	
@@ -81,6 +83,7 @@
 @property (nonatomic, readonly) UIView * contentView;
 @property (nonatomic, copy) NSArray * sourceArray;
 @property (nonatomic, readonly) NSArray * tokenTitles;
+@property (nonatomic, copy) NSString* currentTerm;
 
 - (void)updateContentSize;
 

@@ -30,6 +30,7 @@
 @synthesize contentView;
 @synthesize separator;
 @synthesize sourceArray;
+@synthesize currentTerm;
 
 #pragma mark Init
 - (id)initWithFrame:(CGRect)frame {
@@ -58,6 +59,7 @@
 	
 	showAlreadyTokenized = NO;
 	resultsArray = [[NSMutableArray alloc] init];
+  self.sourceArray = [[NSArray alloc] init];
 	
 	tokenField = [[TITokenField alloc] initWithFrame:CGRectMake(0, 0, self.bounds.size.width, 42)];
 	[tokenField addTarget:self action:@selector(tokenFieldDidBeginEditing:) forControlEvents:UIControlEventEditingDidBegin];
@@ -208,8 +210,13 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	
 	id representedObject = [resultsArray objectAtIndex:indexPath.row];
-	TIToken * token = [tokenField addTokenWithTitle:[self displayStringForRepresentedObject:representedObject]];
-	[token setRepresentedObject:representedObject];
+  
+  if ([tokenField.delegate respondsToSelector:@selector(tokenField:resultsTableView:didSelectRowForObject:)]){
+    return [tokenField.delegate tokenField:tokenField resultsTableView:tableView didSelectRowForObject:representedObject];
+  } else {
+    TIToken * token = [tokenField addTokenWithTitle:[self displayStringForRepresentedObject:representedObject]];
+    [token setRepresentedObject:representedObject];
+  }
 	
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
@@ -285,38 +292,50 @@
 	// If the source is massive, this could take some time.
 	// You could always subclass and override this if needed or do it on a background thread.
 	// GCD would be great for that.
-	
+  self.currentTerm = substring;
+
 	[resultsArray removeAllObjects];
 	[resultsTable reloadData];
+  NSArray* sourceCopy = [sourceArray copy];
 	
-	NSArray * sourceCopy = [sourceArray copy];
-	for (NSString * sourceObject in sourceCopy){
-		
-		NSString * query = [self searchResultStringForRepresentedObject:sourceObject];
-		if ([query rangeOfString:substring options:NSCaseInsensitiveSearch].location != NSNotFound){
-			
-			BOOL shouldAdd = ![resultsArray containsObject:sourceObject];
-			if (shouldAdd && !showAlreadyTokenized){
+  dispatch_queue_t queue = dispatch_queue_create("com.Invy.task", NULL);
+  dispatch_async(queue, ^{
+    if ([substring isEqualToString:self.currentTerm]) {
+      NSPredicate* predicate = [NSPredicate predicateWithFormat:@"email CONTAINS[cd] %@", substring];
+      NSArray* emailArray = [sourceCopy filteredArrayUsingPredicate:predicate];
+      
+      predicate = [NSPredicate predicateWithFormat:@"name CONTAINS[cd] %@", substring];
+      NSArray* nameArray = [sourceCopy filteredArrayUsingPredicate:predicate];
+      
+      NSArray* filteredArray = [emailArray arrayByAddingObjectsFromArray:nameArray];
+      
+      for (NSString * sourceObject in filteredArray){
+        BOOL shouldAdd = ![resultsArray containsObject:sourceObject];
+        if (shouldAdd && !showAlreadyTokenized){
 				
-				for (TIToken * token in tokenField.tokens){
-					if ([token.representedObject isEqual:sourceObject]){
-						shouldAdd = NO;
-						break;
-					}
-				}
-			}
-			
-			if (shouldAdd) [resultsArray addObject:sourceObject];
-		}
-	}
-	
-	[sourceCopy release];
-	
-	[resultsArray sortUsingComparator:^NSComparisonResult(id obj1, id obj2) {
-		return [[self searchResultStringForRepresentedObject:obj1] localizedCaseInsensitiveCompare:[self searchResultStringForRepresentedObject:obj2]];
-	}];
-	[resultsTable reloadData];
-	[self setSearchResultsVisible:(resultsArray.count > 0)];
+          for (TIToken * token in tokenField.tokens){
+            if ([token.representedObject isEqual:sourceObject]){
+              shouldAdd = NO;
+              break;
+            }
+          }
+  			
+          if (shouldAdd) [resultsArray addObject:sourceObject];
+        }
+      }
+    
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if ([substring isEqualToString:self.currentTerm]) {
+          [resultsArray sortUsingComparator:^NSComparisonResult(id obj1, id obj2) {
+            return [[self searchResultStringForRepresentedObject:obj1] localizedCaseInsensitiveCompare:[self searchResultStringForRepresentedObject:obj2]];
+          }];
+          
+          [resultsTable reloadData];
+          [self setSearchResultsVisible:(resultsArray.count > 0)];
+        }
+      });
+    }
+  });
 }
 
 - (void)presentpopoverAtTokenFieldCaretAnimated:(BOOL)animated {
@@ -683,7 +702,8 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 			[self sendActionsForControlEvents:TITokenFieldControlEventFrameWillChange];
 			
 		} completion:^(BOOL complete){
-			[self sendActionsForControlEvents:TITokenFieldControlEventFrameDidChange];
+      // TODO: FIX ERROR HERE
+      //[self sendActionsForControlEvents:TITokenFieldControlEventFrameDidChange];
 		}];
 	}
 }
