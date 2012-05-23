@@ -183,9 +183,11 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	
-	if ([tokenField.delegate respondsToSelector:@selector(tokenField:didFinishSearch:)]){
-		[tokenField.delegate tokenField:tokenField didFinishSearch:resultsArray];
-	}
+  if (resultsArray) {
+    if ([tokenField.delegate respondsToSelector:@selector(tokenField:didFinishSearch:)]){
+      [tokenField.delegate tokenField:tokenField didFinishSearch:resultsArray];
+    }
+  }
 	
 	return resultsArray.count;
 }
@@ -285,6 +287,54 @@
 	}
 }
 
+- (void)performSearchWithTerm:(NSString*)query {
+  
+  if ([query isEqualToString:self.currentTerm]) {
+    // do searching here and periodically double-check
+    // term against self.currentTerm to see if it changed
+    NSMutableArray* objects = [[NSMutableArray alloc] init];
+    
+    NSPredicate* predicate = [NSPredicate predicateWithFormat:@"email CONTAINS[cd] %@", query];
+    NSArray* emailArray = [sourceArray filteredArrayUsingPredicate:predicate];
+    
+    predicate = [NSPredicate predicateWithFormat:@"name CONTAINS[cd] %@", query];
+    NSArray* nameArray = [sourceArray filteredArrayUsingPredicate:predicate];
+    
+    NSArray* filteredSource = [emailArray arrayByAddingObjectsFromArray:nameArray];
+    
+    for (NSString * sourceObject in filteredSource) {
+      
+      BOOL shouldAdd = ![objects containsObject:sourceObject];
+      if (shouldAdd && !showAlreadyTokenized){
+        
+        for (TIToken * token in tokenField.tokens){
+          if ([token.representedObject isEqual:sourceObject]){
+            shouldAdd = NO;
+            break;
+          }
+        }
+      }
+      
+      if (shouldAdd) [objects addObject:sourceObject];
+    }
+    
+    // When we have results, pass them to the main thread
+    // Must check against current term again for safety.
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if ([query isEqualToString:self.currentTerm]) {     
+        [objects sortUsingComparator:^NSComparisonResult(id obj1, id obj2) {
+          return [[self searchResultStringForRepresentedObject:obj1] localizedCaseInsensitiveCompare:[self searchResultStringForRepresentedObject:obj2]];
+        }];
+        
+        [resultsArray addObjectsFromArray:objects];
+        
+        [resultsTable reloadData];
+        [self setSearchResultsVisible:(resultsArray.count > 0)];
+      }
+    });
+  }
+}
+
 - (void)resultsForSubstring:(NSString *)substring {
 	
 	// The brute force searching method.
@@ -292,50 +342,24 @@
 	// If the source is massive, this could take some time.
 	// You could always subclass and override this if needed or do it on a background thread.
 	// GCD would be great for that.
+  substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
   self.currentTerm = substring;
-
-	[resultsArray removeAllObjects];
-	[resultsTable reloadData];
-  NSArray* sourceCopy = [sourceArray copy];
-	
-  dispatch_queue_t queue = dispatch_queue_create("com.Invy.task", NULL);
+  
+  [resultsArray removeAllObjects];
+  [resultsTable reloadData];
+  
+  if ([tokenField.delegate respondsToSelector:@selector(tokenField:didStartSearch:)]) {
+    [tokenField.delegate tokenField:tokenField didStartSearch:substring];
+  }
+  
+  dispatch_queue_t queue = dispatch_queue_create("com.Invy.contacts", 0);
   dispatch_async(queue, ^{
-    if ([substring isEqualToString:self.currentTerm]) {
-      NSPredicate* predicate = [NSPredicate predicateWithFormat:@"email CONTAINS[cd] %@", substring];
-      NSArray* emailArray = [sourceCopy filteredArrayUsingPredicate:predicate];
-      
-      predicate = [NSPredicate predicateWithFormat:@"name CONTAINS[cd] %@", substring];
-      NSArray* nameArray = [sourceCopy filteredArrayUsingPredicate:predicate];
-      
-      NSArray* filteredArray = [emailArray arrayByAddingObjectsFromArray:nameArray];
-      
-      for (NSString * sourceObject in filteredArray){
-        BOOL shouldAdd = ![resultsArray containsObject:sourceObject];
-        if (shouldAdd && !showAlreadyTokenized){
-				
-          for (TIToken * token in tokenField.tokens){
-            if ([token.representedObject isEqual:sourceObject]){
-              shouldAdd = NO;
-              break;
-            }
-          }
-  			
-          if (shouldAdd) [resultsArray addObject:sourceObject];
-        }
-      }
-    
-      dispatch_async(dispatch_get_main_queue(), ^{
-        if ([substring isEqualToString:self.currentTerm]) {
-          [resultsArray sortUsingComparator:^NSComparisonResult(id obj1, id obj2) {
-            return [[self searchResultStringForRepresentedObject:obj1] localizedCaseInsensitiveCompare:[self searchResultStringForRepresentedObject:obj2]];
-          }];
-          
-          [resultsTable reloadData];
-          [self setSearchResultsVisible:(resultsArray.count > 0)];
-        }
-      });
-    }
+    [self performSearchWithTerm:substring];
   });
+    
+  /*
+  
+   */
 }
 
 - (void)presentpopoverAtTokenFieldCaretAnimated:(BOOL)animated {
