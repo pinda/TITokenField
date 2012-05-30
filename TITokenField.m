@@ -302,13 +302,14 @@
     
     NSArray* filteredSource = [emailArray arrayByAddingObjectsFromArray:nameArray];
     
-    for (NSString * sourceObject in filteredSource) {
+    NSArray* tokens = [tokenField.tokens copy];
+    for (NSDictionary * sourceObject in filteredSource) {
       
       BOOL shouldAdd = ![objects containsObject:sourceObject];
       if (shouldAdd && !showAlreadyTokenized){
         
-        for (TIToken * token in tokenField.tokens){
-          if ([token.representedObject isEqual:sourceObject]){
+        for (TIToken * token in tokens){
+          if ([token.title isEqual:[sourceObject objectForKey:@"fullName"]]){
             shouldAdd = NO;
             break;
           }
