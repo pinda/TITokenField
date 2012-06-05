@@ -25,6 +25,7 @@
 @implementation TITokenFieldView
 @dynamic delegate;
 @synthesize showAlreadyTokenized;
+@synthesize stopQueue;
 @synthesize tokenField;
 @synthesize resultsTable;
 @synthesize contentView;
@@ -288,22 +289,28 @@
 }
 
 - (void)performSearchWithTerm:(NSString*)query {
+    
+  if (self.stopQueue) {
+    self.stopQueue = NO;
+    return;
+  }
   
-  if ([query isEqualToString:self.currentTerm]) {
+  if ([query isEqualToString:self.currentTerm] && !self.stopQueue) {
     // do searching here and periodically double-check
     // term against self.currentTerm to see if it changed
     NSMutableArray* objects = [[NSMutableArray alloc] init];
-    
-    NSPredicate* predicate = [NSPredicate predicateWithFormat:@"email CONTAINS[cd] %@", query];
-    NSArray* emailArray = [sourceArray filteredArrayUsingPredicate:predicate];
-    
-    predicate = [NSPredicate predicateWithFormat:@"name CONTAINS[cd] %@", query];
-    NSArray* nameArray = [sourceArray filteredArrayUsingPredicate:predicate];
-    
-    NSArray* filteredSource = [emailArray arrayByAddingObjectsFromArray:nameArray];
+
+    NSPredicate* predicate = [NSPredicate predicateWithFormat:@"(name CONTAINS[cd] %@)", query, query];
+    NSArray* filteredSource = [sourceArray filteredArrayUsingPredicate:predicate];
     
     NSArray* tokens = [tokenField.tokens copy];
+    
     for (NSDictionary * sourceObject in filteredSource) {
+      
+      if (![query isEqualToString:self.currentTerm] || self.stopQueue) {
+        [objects removeAllObjects];
+        break;
+      }
       
       BOOL shouldAdd = ![objects containsObject:sourceObject];
       if (shouldAdd && !showAlreadyTokenized){
@@ -322,15 +329,18 @@
     // When we have results, pass them to the main thread
     // Must check against current term again for safety.
     dispatch_async(dispatch_get_main_queue(), ^{
-      if ([query isEqualToString:self.currentTerm]) {     
+      @autoreleasepool {
+      if ([query isEqualToString:self.currentTerm] && !self.stopQueue) {     
         [objects sortUsingComparator:^NSComparisonResult(id obj1, id obj2) {
           return [[self searchResultStringForRepresentedObject:obj1] localizedCaseInsensitiveCompare:[self searchResultStringForRepresentedObject:obj2]];
         }];
         
         [resultsArray addObjectsFromArray:objects];
+        [objects release];
         
         [resultsTable reloadData];
         [self setSearchResultsVisible:(resultsArray.count > 0)];
+      }        
       }
     });
   }
@@ -354,13 +364,15 @@
   }
   
   dispatch_queue_t queue = dispatch_queue_create("com.Invy.contacts", 0);
+  __block BOOL isCanceled = self.stopQueue;
   dispatch_async(queue, ^{
-    [self performSearchWithTerm:substring];
+    if (isCanceled) {
+      self.stopQueue = NO;
+      return;
+    } else {
+      [self performSearchWithTerm:substring];
+    }
   });
-    
-  /*
-  
-   */
 }
 
 - (void)presentpopoverAtTokenFieldCaretAnimated:(BOOL)animated {

@@ -63,6 +63,7 @@
 @interface TITokenFieldView : UIScrollView <UITableViewDelegate, UITableViewDataSource, TITokenFieldDelegate> {
 	
 	BOOL showAlreadyTokenized;
+  BOOL stopQueue;
 	
 	UIView * separator;
 	UITableView * resultsTable;
@@ -78,6 +79,7 @@
 }
 
 @property (nonatomic, assign) BOOL showAlreadyTokenized;
+@property (nonatomic, assign) BOOL stopQueue;
 @property (nonatomic, readonly) TITokenField * tokenField;
 @property (nonatomic, readonly) UIView * separator;
 @property (nonatomic, readonly) UITableView * resultsTable;
